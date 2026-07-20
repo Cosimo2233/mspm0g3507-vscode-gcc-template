@@ -1,0 +1,12 @@
+{
+    "C_Cpp.default.compilerPath": "D:/stm32CubeMX/STM32CubeCLT_1.21.0/GNU-tools-for-STM32/bin/arm-none-eabi-gcc.exe",
+    "C_Cpp.errorSquiggles": "enabled",
+    "C_Cpp.intelliSenseEngine": "default",
+    "files.associations": {
+        "*.syscfg": "javascript"
+    },
+    "files.exclude": {
+        "**/build/obj": true,
+        "**/build/debug/obj": true
+    }
+}
