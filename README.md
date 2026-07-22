@@ -1,5 +1,7 @@
 # MSPM0G3507 VS Code + Arm GCC 开发模板
 
+当前 SysConfig 目标为立创·地猛星使用的 MSPM0G3507 48Pin `LQFP-48(PT)` 封装。
+
 这是一套不依赖 CCS 工程管理的 MSPM0G3507 通用工程模板，适用于 Windows 和 VS Code。
 
 它提供：
@@ -55,6 +57,231 @@ mspm0g3507-vscode-gcc-template/
 
 本机的 GCC 来自 STM32CubeCLT，但它是标准的 `arm-none-eabi-gcc`，可以用于 Cortex-M0+ 和 MSPM0。也可以换成 Arm 官方 GNU Toolchain，只需修改本节后面列出的路径。
 
+### 2.1 新电脑从零配置环境（重点）
+
+本模板可以放在任意英文路径。若想克隆后直接构建，可以复现当前目录布局：
+
+```text
+D:\ti\mspm0_sdk_2_04_00_06
+D:\ti\ccs
+D:\ti\SYSCONFIG
+D:\ti\openocd-b56339c
+D:\stm32CubeMX\STM32CubeCLT_1.21.0\GNU-tools-for-STM32
+```
+
+本机当前工程位于：
+
+```text
+D:\workspace\mspm0g3507-vscode-gcc-template
+```
+
+工程不必放进 SDK，移动或克隆到其他英文目录不会影响 `src/`、`include/`、`config/` 和 `build/` 的相对路径。
+
+#### 第一步：安装 VS Code 和扩展
+
+安装 64 位 VS Code，然后安装：
+
+| 扩展 | 扩展 ID | 用途 |
+| --- | --- | --- |
+| Microsoft C/C++ | `ms-vscode.cpptools` | GCC 补全、跳转和错误提示 |
+| Cortex-Debug | `marus25.cortex-debug` | OpenOCD + GDB 调试 |
+| TI Embedded Development | `ti-development-tools.ti-embedded-development` | MSPM0 设备、SVD 和 TI 工具支持 |
+
+PowerShell 安装命令：
+
+```powershell
+code --install-extension ms-vscode.cpptools
+code --install-extension marus25.cortex-debug
+code --install-extension ti-development-tools.ti-embedded-development
+```
+
+安装后重启 VS Code，并使用“文件 → 打开文件夹”打开整个模板目录，不要只打开 `main.c`。
+
+#### 第二步：安装 MSPM0 SDK 2.04.00.06
+
+从 [TI MSPM0 SDK 官方页面](https://www.ti.com/tool/MSPM0-SDK) 获取与模板匹配的 SDK，推荐目录：
+
+```text
+D:\ti\mspm0_sdk_2_04_00_06
+```
+
+确认：
+
+```text
+D:\ti\mspm0_sdk_2_04_00_06\.metadata\product.json
+D:\ti\mspm0_sdk_2_04_00_06\source\ti\driverlib\driverlib.h
+D:\ti\mspm0_sdk_2_04_00_06\source\ti\devices\msp\m0p\startup_system_files\gcc\startup_mspm0g350x_gcc.c
+```
+
+`config/app.syscfg` 当前声明 `mspm0_sdk@2.04.00.06`。使用新版 SDK 时，应在新版 SysConfig 中迁移并保存配置，再验证 48Pin `LQFP-48(PT)` 封装、PA14 LED、时钟和生成的链接脚本。
+
+#### 第三步：安装 Arm GCC
+
+当前已验证的编译器是：
+
+```text
+arm-none-eabi-gcc 14.3.1
+D:\stm32CubeMX\STM32CubeCLT_1.21.0\GNU-tools-for-STM32
+```
+
+它由 STM32CubeCLT 提供，但本工程只使用其中的标准 GNU 工具，不依赖 STM32 库。新电脑有两种选择：
+
+1. 安装相同版本的 STM32CubeCLT，保持现有路径，工程无需修改。
+2. 从 [Arm GNU Toolchain 官方页面](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads) 安装 Windows 的 AArch32 bare-metal `arm-none-eabi` 工具链，然后修改 `GCC_ARM_ROOT` 和 VS Code 路径。
+
+模板已经用 GCC 14.3.1 验证。若追求可复现构建，优先使用相同主版本；换用更新的 GCC 后，应重新检查警告、固件尺寸、链接 map 和硬件运行结果。
+
+GCC 根目录下必须存在：
+
+```text
+bin\arm-none-eabi-gcc.exe
+bin\arm-none-eabi-gdb.exe
+bin\arm-none-eabi-objcopy.exe
+bin\arm-none-eabi-size.exe
+```
+
+验证：
+
+```powershell
+& 'D:\stm32CubeMX\STM32CubeCLT_1.21.0\GNU-tools-for-STM32\bin\arm-none-eabi-gcc.exe' --version
+& 'D:\stm32CubeMX\STM32CubeCLT_1.21.0\GNU-tools-for-STM32\bin\arm-none-eabi-gdb.exe' --version
+```
+
+#### 第四步：安装 GNU Make 4.3 或更高版本
+
+Makefile 使用了 GNU Make 的 grouped target 语法 `&:`，因此不要使用 Microsoft `nmake`，并建议 GNU Make 4.3 或更高版本。当前模板使用 CCS 自带的：
+
+```text
+D:\ti\ccs\utils\bin\gmake.exe
+```
+
+可以从 [TI Code Composer Studio](https://www.ti.com/tool/CCSTUDIO) 获得该工具。GCC 编译本身不依赖 CCS，但安装 CCS 还会提供 XDS110 所需 DSLite。若使用其他 GNU Make，请同步修改 `.vscode/tasks.json` 中所有 `command`。
+
+验证：
+
+```powershell
+& 'D:\ti\ccs\utils\bin\gmake.exe' --version
+```
+
+#### 第五步：安装独立 SysConfig
+
+从 [TI SysConfig 官方页面](https://www.ti.com/tool/SYSCONFIG) 安装独立版，推荐目录：
+
+```text
+D:\ti\SYSCONFIG
+```
+
+确认并验证：
+
+```powershell
+Test-Path 'D:\ti\SYSCONFIG\sysconfig_cli.bat'
+Test-Path 'D:\ti\SYSCONFIG\sysconfig_gui.bat'
+& 'D:\ti\SYSCONFIG\sysconfig_cli.bat' --version
+```
+
+当前验证版本为 `1.23.0+4000`。Build 会以 `--compiler gcc` 运行 CLI，生成 GCC 形式的 `device.opt`、`device_linker.lds` 和 `device.lds.genlibs`。
+
+#### 第六步：安装支持 MSPM0 的 OpenOCD
+
+DAPLink 烧录和 F5 调试要求：
+
+```text
+D:\ti\openocd-b56339c\bin\openocd.exe
+D:\ti\openocd-b56339c\share\openocd\scripts\interface\cmsis-dap.cfg
+D:\ti\openocd-b56339c\share\openocd\scripts\target\ti\mspm0.cfg
+```
+
+OpenOCD 必须包含 MSPM0 Flash Driver 和 `target/ti/mspm0.cfg`；不能随意替换成只支持常见 STM32/GD32 的旧版 OpenOCD。命令和配置说明见 [OpenOCD 官方文档](https://openocd.org/pages/documentation.html)。
+
+验证：
+
+```powershell
+& 'D:\ti\openocd-b56339c\bin\openocd.exe' --version
+Test-Path 'D:\ti\openocd-b56339c\share\openocd\scripts\target\ti\mspm0.cfg'
+```
+
+地猛星使用 `GND`、`CLK/SWCLK`、`DIO/SWDIO`，建议连接 `RST/NRST`。探针和目标板必须共地。
+
+#### 第七步：配置调试所需的 GDB 和 SVD
+
+GDB 已包含在 GCC 工具链中，`.vscode/launch.json` 的 `gdbPath` 必须指向：
+
+```text
+<GCC_ARM_ROOT>\bin\arm-none-eabi-gdb.exe
+```
+
+外设寄存器视图使用 TI 扩展提供的 SVD。查找实际文件：
+
+```powershell
+Get-ChildItem "$env:USERPROFILE\.vscode\extensions" -Filter MSPM0G350X.svd -File -Recurse
+```
+
+如果扩展版本不是 `1.0.2`，把查到的路径写入 `.vscode/launch.json` 的 `svdFile`。SVD 路径错误不会影响编译和烧录，但会影响 F5 调试时的外设寄存器显示。
+
+#### 第八步：可选安装 J-Link 和 XDS110/DSLite
+
+- 只用 DAPLink 可跳过 J-Link。
+- J-Link 路径在 `tools/flash-jlink.ps1` 中配置。
+- XDS110 的 DSLite 路径在 `tools/flash-xds110.ps1` 中配置。
+- 所有烧录后端都接受 GCC 生成的 ELF 格式 `build/firmware.out`。
+
+#### 第九步：工具安装路径不同时修改哪些文件
+
+| 路径类型 | 需要修改的文件 |
+| --- | --- |
+| SDK、GCC、SysConfig | `Makefile` |
+| GNU Make、SysConfig GUI、SDK product.json | `.vscode/tasks.json` |
+| GCC 和 SDK 头文件 | `.vscode/c_cpp_properties.json`、`.vscode/settings.json` |
+| OpenOCD、GDB、SVD | `.vscode/launch.json` |
+| OpenOCD 默认位置 | `tools/flash-openocd.ps1` |
+| J-Link 默认位置 | `tools/flash-jlink.ps1` |
+| DSLite 默认位置 | `tools/flash-xds110.ps1` |
+
+Makefile 和 JSON 中建议统一使用正斜杠，例如 `D:/tools/arm-gnu-toolchain`。
+
+#### 第十步：在新电脑执行环境自检
+
+如果采用当前默认路径，在 PowerShell 执行：
+
+```powershell
+$required = @(
+    'D:\ti\mspm0_sdk_2_04_00_06\.metadata\product.json',
+    'D:\stm32CubeMX\STM32CubeCLT_1.21.0\GNU-tools-for-STM32\bin\arm-none-eabi-gcc.exe',
+    'D:\stm32CubeMX\STM32CubeCLT_1.21.0\GNU-tools-for-STM32\bin\arm-none-eabi-gdb.exe',
+    'D:\stm32CubeMX\STM32CubeCLT_1.21.0\GNU-tools-for-STM32\bin\arm-none-eabi-objcopy.exe',
+    'D:\ti\ccs\utils\bin\gmake.exe',
+    'D:\ti\SYSCONFIG\sysconfig_cli.bat',
+    'D:\ti\SYSCONFIG\sysconfig_gui.bat',
+    'D:\ti\openocd-b56339c\bin\openocd.exe',
+    'D:\ti\openocd-b56339c\share\openocd\scripts\interface\cmsis-dap.cfg',
+    'D:\ti\openocd-b56339c\share\openocd\scripts\target\ti\mspm0.cfg'
+)
+$required | ForEach-Object {
+    [pscustomobject]@{ Exists = Test-Path -LiteralPath $_; Path = $_ }
+}
+```
+
+全部显示 `Exists=True` 后，在工程根目录执行：
+
+```powershell
+& 'D:\ti\ccs\utils\bin\gmake.exe' -f Makefile clean
+& 'D:\ti\ccs\utils\bin\gmake.exe' -f Makefile all
+& 'D:\ti\ccs\utils\bin\gmake.exe' -f Makefile BUILD_DIR=build/debug OPT_LEVEL=-O0 all
+```
+
+成功后应存在：
+
+```text
+build\firmware.out
+build\firmware.hex
+build\firmware.bin
+build\firmware.map
+build\debug\firmware.out
+build\syscfg\ti_msp_dl_config.h
+```
+
+`gmake: Nothing to be done for 'all'.` 仅表示无需重复编译，不是错误。
+
 ## 3. VS Code 扩展
 
 建议安装：
@@ -70,7 +297,7 @@ mspm0g3507-vscode-gcc-template/
 必须在 VS Code 中打开整个工程目录，而不是只打开某个 `.c` 文件：
 
 ```text
-D:\ti\mspm0g3507-vscode-gcc-template
+D:\workspace\mspm0g3507-vscode-gcc-template
 ```
 
 第一次编译：
