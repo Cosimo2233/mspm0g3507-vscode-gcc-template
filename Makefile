@@ -23,7 +23,10 @@ SIZE := "$(GCC_ARM_ROOT)/bin/arm-none-eabi-size.exe"
 OBJCOPY := "$(GCC_ARM_ROOT)/bin/arm-none-eabi-objcopy.exe"
 SYSCONFIG_CLI := "$(SYSCONFIG_ROOT)/sysconfig_cli.bat"
 
-USER_SOURCES := $(wildcard $(SOURCE_DIR)/*.c)
+# Recursively collect C sources while preserving their path below src/.
+# Example: src/drivers/uart.c -> build/obj/drivers/uart.o
+rwildcard = $(foreach item,$(wildcard $1*),$(call rwildcard,$(item)/,$2) $(filter $(subst *,%,$2),$(item)))
+USER_SOURCES := $(strip $(call rwildcard,$(SOURCE_DIR)/,*.c))
 USER_OBJECTS := $(patsubst $(SOURCE_DIR)/%.c,$(OBJECT_DIR)/%.o,$(USER_SOURCES))
 SYSCONFIG_SOURCE := $(SYSCONFIG_DIR)/ti_msp_dl_config.c
 SYSCONFIG_HEADER := $(SYSCONFIG_DIR)/ti_msp_dl_config.h
@@ -100,6 +103,7 @@ $(SYSCONFIG_OUTPUTS) &: $(SYSCONFIG_FILE) | $(SYSCONFIG_DIR)
 
 $(OBJECT_DIR)/%.o: $(SOURCE_DIR)/%.c $(SYSCONFIG_HEADER) Makefile | $(OBJECT_DIR)
 	@ echo Building $@
+	@ powershell.exe -NoProfile -Command "New-Item -ItemType Directory -Force -Path '$(@D)' | Out-Null"
 	@ $(CC) $(CFLAGS) -MF "$(@:.o=.d)" -c "$<" -o "$@"
 
 $(SYSCONFIG_OBJECT): $(SYSCONFIG_SOURCE) $(SYSCONFIG_HEADER) Makefile | $(OBJECT_DIR)

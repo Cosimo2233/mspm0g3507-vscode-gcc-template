@@ -29,20 +29,51 @@ mspm0g3507-vscode-gcc-template/
 │  └─ tasks.json              编译、清理和烧录任务
 ├─ config/
 │  └─ app.syscfg              SysConfig 工程配置
-├─ include/                   用户头文件
+├─ include/                   用户公开头文件
+│  ├─ app/                    应用层接口
+│  ├─ drivers/                板级驱动接口
+│  └─ modules/                可复用功能模块接口
 ├─ src/
-│  └─ main.c                  示例主程序
+│  ├─ main.c                  程序入口
+│  ├─ app/                    应用初始化、调度和状态机
+│  ├─ drivers/                LED、按键、UART、ADC 等板级驱动
+│  └─ modules/                PID、滤波、协议和控制算法
+├─ third_party/               第三方组件及许可证
+├─ docs/                      接线、协议和设计文档
+├─ tests/                     主机端算法和协议测试
 ├─ tools/
 │  ├─ clean.ps1               安全清理 build 目录
 │  ├─ flash-openocd.ps1       DAPLink 烧录
 │  ├─ flash-jlink.ps1         J-Link 烧录
 │  ├─ flash-xds110.ps1        XDS110/DSLite 烧录
 │  └─ mspm0g3507_xds110.ccxml XDS110 目标配置
+├─ build/                     自动生成，不提交 Git
+│  ├─ obj/                    与 src/ 对应的目标和依赖文件
+│  └─ syscfg/                 SysConfig 自动生成文件
 ├─ Makefile                   GCC 构建入口
 └─ README.md
 ```
 
 `build/` 由构建系统自动产生，不属于源代码，已被 `.gitignore` 忽略。
+
+目录之间推荐保持以下依赖方向：
+
+```text
+main.c
+  ↓
+app/
+  ├─→ modules/
+  └─→ drivers/
+         ↓
+  SysConfig / TI DriverLib
+```
+
+- `main.c` 只保留程序入口、一次 `SYSCFG_DL_init()` 和顶层调度。
+- `app/` 负责业务流程，可以调用模块层和驱动层。
+- `modules/` 保存尽量与具体引脚无关的算法、协议和状态机。
+- `drivers/` 封装板级硬件，不应依赖应用层。
+- `third_party/` 默认不参与编译，接入时应明确记录版本、许可证和适配方式。
+- `build/` 中的任何内容都可以重新生成，不要手工维护。
 
 ## 2. 当前使用的工具
 
@@ -325,17 +356,37 @@ Generating build/firmware.bin
 
 ## 5. 编写代码
 
-用户 `.c` 文件放入 `src/`，用户头文件放入 `include/`。
+用户 `.c` 文件放入 `src/`，用户头文件放入 `include/`。目录可以按照职责分层。
 
-Makefile 会自动收集所有 `src/*.c`，添加新源文件后无需手工编辑源文件列表。例如：
+Makefile 会递归收集所有 `src/` 子目录中的 `.c` 文件，添加新源文件后无需手工编辑源文件列表。例如：
 
 ```text
 src/main.c
-src/uart.c
-src/control.c
-include/uart.h
-include/control.h
+src/app/app.c
+src/drivers/uart.c
+src/modules/control.c
+include/app/app.h
+include/drivers/uart.h
+include/modules/control.h
 ```
+
+对象和依赖文件会保持相同的相对目录：
+
+```text
+src/app/app.c             → build/obj/app/app.o
+src/drivers/uart.c        → build/obj/drivers/uart.o
+src/modules/control.c     → build/obj/modules/control.o
+```
+
+头文件搜索根目录是 `include/`，因此对子目录中的头文件应使用完整相对路径：
+
+```c
+#include "app/app.h"
+#include "drivers/uart.h"
+#include "modules/control.h"
+```
+
+不建议同时将每个头文件子目录单独加入搜索路径，否则不同模块出现同名头文件时容易引用错误。
 
 在用户代码中包含 SysConfig 生成的头文件：
 
@@ -358,7 +409,23 @@ int main(void)
 
 `SYSCFG_DL_init()` 通常只调用一次。它会初始化 SysConfig 中设置的时钟、GPIO 和外设。
 
-修改 `.c` 或 `.h` 后再次按 `Ctrl+Shift+B`。依赖文件位于 `build/obj/*.d`，Make 只重新编译受影响的文件。
+修改 `.c` 或 `.h` 后再次按 `Ctrl+Shift+B`。依赖文件位于 `build/obj/` 对应的子目录中，Make 只重新编译受影响的文件。
+
+### 5.1 各目录适合放什么
+
+| 目录 | 适合内容 | 不建议放置 |
+| --- | --- | --- |
+| `src/` | 用户 `.c` 实现 | 自动生成代码、第三方完整源码包 |
+| `include/` | 用户公开 `.h` 接口 | 普通全局变量定义、大段函数实现 |
+| `src/drivers/` | GPIO、UART、ADC、PWM、按键等板级封装 | 产品业务流程 |
+| `src/modules/` | PID、滤波、协议、控制算法 | 直接写死板级引脚 |
+| `src/app/` | 应用初始化、调度和状态机 | 可独立复用的底层算法 |
+| `config/` | `app.syscfg` 等持久硬件配置 | `build/syscfg` 的生成结果 |
+| `third_party/` | 有来源和许可证的外部组件 | 未知来源的复制代码 |
+| `docs/` | 接线、协议、设计和测试说明 | 可从官网下载的大型重复资料 |
+| `tests/` | 主机端算法、协议测试及测试数据 | 目标固件正式源码 |
+
+各空目录中的 `README.md` 是用途说明和 Git 占位文件。开始添加真实模块后可以保留这些说明，也可以将更具体的模块文档补充进去。
 
 ## 6. 使用 SysConfig
 
@@ -639,7 +706,7 @@ README.md
 ## 17. 推荐日常流程
 
 ```text
-编辑 src/*.c 和 include/*.h
+编辑 src/**/*.c 和 include/**/*.h
     ↓
 需要时用 SysConfig 修改外设
     ↓
